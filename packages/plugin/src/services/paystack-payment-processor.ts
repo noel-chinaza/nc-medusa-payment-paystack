@@ -98,7 +98,7 @@ class PaystackPaymentProcessor extends AbstractPaymentProcessor {
 
     const { data, status, message } =
       await this.paystack.transaction.initialize({
-        amount: amount, // Paystack expects amount in lowest denomination - https://paystack.com/docs/payments/accept-payments/#initialize-transaction-1
+        amount: amount*(validatedCurrencyCode.toLowerCase() == 'ngn' ? 100 : 1), // Paystack expects amount in lowest denomination - https://paystack.com/docs/payments/accept-payments/#initialize-transaction-1
         email,
         currency: validatedCurrencyCode,
       });
@@ -224,7 +224,7 @@ class PaystackPaymentProcessor extends AbstractPaymentProcessor {
       switch (data.status) {
         case "success": {
           const amountValid =
-            Math.round(cart.total) === Math.round(data.amount);
+            Math.round(cart.total) === Math.round(data.amount / (cart.region.currency_code.toLowerCase() == 'ngn' ? 100 : 1));
           const currencyValid =
             cart.region.currency_code === data.currency.toLowerCase();
 
@@ -323,7 +323,7 @@ class PaystackPaymentProcessor extends AbstractPaymentProcessor {
    * Refunds payment for Paystack transaction
    */
   async refundPayment(
-    paymentSessionData: Record<string, unknown> & { paystackTxId: number },
+    paymentSessionData: Record<string, unknown> & { paystackTxId: number, paystackTxData: { currency: string } },
     refundAmount: number,
   ): Promise<Record<string, unknown> | PaymentProcessorError> {
     if (this.debug) {
@@ -334,11 +334,11 @@ class PaystackPaymentProcessor extends AbstractPaymentProcessor {
     }
 
     try {
-      const { paystackTxId } = paymentSessionData;
+      const { paystackTxId, paystackTxData } = paymentSessionData;
 
       const { data, status, message } = await this.paystack.refund.create({
         transaction: paystackTxId,
-        amount: refundAmount,
+        amount: refundAmount * (paystackTxData.currency.toLowerCase() == 'ngn' ? 1000:1),
       });
 
       if (status === false) {
