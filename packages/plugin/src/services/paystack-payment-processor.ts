@@ -8,9 +8,12 @@ import {
   PaymentSessionStatus,
   MedusaContainer,
   CartService,
+  
 } from "@medusajs/medusa";
 import { MedusaError, MedusaErrorTypes } from "@medusajs/utils";
 import { validateCurrencyCode } from "../utils/currencyCode";
+import { createHmac } from "crypto";
+import PaymentRepository from "@medusajs/medusa/dist/repositories/payment";
 
 export interface PaystackPaymentProcessorConfig {
   /**
@@ -36,12 +39,13 @@ class PaystackPaymentProcessor extends AbstractPaymentProcessor {
   static identifier = "paystack";
 
   protected readonly cartService: CartService;
+  protected readonly paymentRepository: typeof PaymentRepository;
   protected readonly configuration: PaystackPaymentProcessorConfig;
   protected readonly paystack: Paystack;
   protected readonly debug: boolean;
 
   constructor(
-    container: MedusaContainer,
+    container: MedusaContainer & {paymentRepository: typeof PaymentRepository},
     options: PaystackPaymentProcessorConfig,
   ) {
     super(container);
@@ -59,6 +63,7 @@ class PaystackPaymentProcessor extends AbstractPaymentProcessor {
 
     // @ts-expect-error - Container is just an object - https://docs.medusajs.com/development/fundamentals/dependency-injection#in-classes
     this.cartService = container.cartService;
+    this.paymentRepository = container.paymentRepository;
 
     if (this.cartService.retrieveWithTotals === undefined) {
       throw new MedusaError(
@@ -78,12 +83,12 @@ class PaystackPaymentProcessor extends AbstractPaymentProcessor {
   async initiatePayment(context: PaymentProcessorContext): Promise<
     | PaymentProcessorError
     | (PaymentProcessorSessionResponse & {
-        session_data: {
-          paystackTxRef: string;
-          paystackTxAuthData: PaystackTransactionAuthorisation;
-          cartId: string;
-        };
-      })
+      session_data: {
+        paystackTxRef: string;
+        paystackTxAuthData: PaystackTransactionAuthorisation;
+        cartId: string;
+      };
+    })
   > {
     if (this.debug) {
       console.info(
@@ -98,7 +103,7 @@ class PaystackPaymentProcessor extends AbstractPaymentProcessor {
 
     const { data, status, message } =
       await this.paystack.transaction.initialize({
-        amount: amount*(validatedCurrencyCode.toLowerCase() == 'ngn' ? 100 : 1), // Paystack expects amount in lowest denomination - https://paystack.com/docs/payments/accept-payments/#initialize-transaction-1
+        amount: amount * (validatedCurrencyCode.toLowerCase() == 'ngn' ? 100 : 1), // Paystack expects amount in lowest denomination - https://paystack.com/docs/payments/accept-payments/#initialize-transaction-1
         email,
         currency: validatedCurrencyCode,
       });
@@ -154,10 +159,10 @@ class PaystackPaymentProcessor extends AbstractPaymentProcessor {
   async updatePayment(context: PaymentProcessorContext): Promise<
     | PaymentProcessorError
     | (PaymentProcessorSessionResponse & {
-        session_data: {
-          paystackTxRef: string;
-        };
-      })
+      session_data: {
+        paystackTxRef: string;
+      };
+    })
   > {
     if (this.debug) {
       console.info(
@@ -182,9 +187,9 @@ class PaystackPaymentProcessor extends AbstractPaymentProcessor {
   ): Promise<
     | PaymentProcessorError
     | {
-        status: PaymentSessionStatus;
-        data: Record<string, unknown>;
-      }
+      status: PaymentSessionStatus;
+      data: Record<string, unknown>;
+    }
   > {
     if (this.debug) {
       console.info(
@@ -338,7 +343,7 @@ class PaystackPaymentProcessor extends AbstractPaymentProcessor {
 
       const { data, status, message } = await this.paystack.refund.create({
         transaction: paystackTxId,
-        amount: refundAmount * (paystackTxData.currency.toLowerCase() == 'ngn' ? 1000:1),
+        amount: refundAmount * (paystackTxData.currency.toLowerCase() == 'ngn' ? 1000 : 1),
       });
 
       if (status === false) {
@@ -430,9 +435,9 @@ class PaystackPaymentProcessor extends AbstractPaymentProcessor {
     message: string,
     e:
       | {
-          code?: string;
-          detail: string;
-        }
+        code?: string;
+        detail: string;
+      }
       | Error,
   ): PaymentProcessorError {
     return {
@@ -440,6 +445,11 @@ class PaystackPaymentProcessor extends AbstractPaymentProcessor {
       code: "code" in e ? e.code : "PAYSTACK_PAYMENT_ERROR",
       detail: "detail" in e ? e.detail : e.message ?? "",
     };
+  }
+
+  async verifyWebhook(body: Record<any, any>, xPayStackSignature: string) {
+    const hash = createHmac('sha512', this.configuration.secret_key).update(JSON.stringify(body)).digest('hex');
+    return hash == xPayStackSignature;
   }
 }
 
