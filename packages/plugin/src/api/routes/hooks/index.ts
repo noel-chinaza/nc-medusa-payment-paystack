@@ -5,7 +5,7 @@ import paystackWebhookHandler from "./paystack"
 
 const route = Router()
 
-export default (app: Application) => {
+export default (app: Router) => {
   app.use("/paystack/hooks", route)
 
   route.use(bodyParser.json())

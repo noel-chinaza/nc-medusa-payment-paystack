@@ -103,7 +103,7 @@ class PaystackPaymentProcessor extends AbstractPaymentProcessor {
 
     const { data, status, message } =
       await this.paystack.transaction.initialize({
-        amount: amount * (validatedCurrencyCode.toLowerCase() == 'ngn' ? 100 : 1), // Paystack expects amount in lowest denomination - https://paystack.com/docs/payments/accept-payments/#initialize-transaction-1
+        amount: amount, // Paystack expects amount in lowest denomination - https://paystack.com/docs/payments/accept-payments/#initialize-transaction-1
         email,
         currency: validatedCurrencyCode,
       });
@@ -229,7 +229,7 @@ class PaystackPaymentProcessor extends AbstractPaymentProcessor {
       switch (data.status) {
         case "success": {
           const amountValid =
-            Math.round(cart.total) === Math.round(data.amount / (cart.region.currency_code.toLowerCase() == 'ngn' ? 100 : 1));
+            Math.round(cart.total) === Math.round(data.amount);
           const currencyValid =
             cart.region.currency_code === data.currency.toLowerCase();
 
@@ -343,7 +343,7 @@ class PaystackPaymentProcessor extends AbstractPaymentProcessor {
 
       const { data, status, message } = await this.paystack.refund.create({
         transaction: paystackTxId,
-        amount: refundAmount * (paystackTxData.currency.toLowerCase() == 'ngn' ? 1000 : 1),
+        amount: refundAmount,
       });
 
       if (status === false) {

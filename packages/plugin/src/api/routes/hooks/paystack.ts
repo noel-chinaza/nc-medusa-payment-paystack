@@ -1,8 +1,7 @@
-import { createHmac } from 'crypto';
-import PaystackPaymentProcessor from "../../../services/paystack-payment-processor";
+import { PaymentSession } from '@medusajs/medusa';
+import PaymentSessionRepository from '@medusajs/medusa/dist/repositories/payment-session';
 import { Request, Response } from 'express';
-import { PaymentRepository } from '@medusajs/medusa/dist/repositories/payment';
-import { Payment } from '@medusajs/medusa';
+import PaystackPaymentProcessor from "../../../services/paystack-payment-processor";
 
 export default async (req: Request, res: Response) => {
   const paystackPaymentProcessorService: PaystackPaymentProcessor = req.scope.resolve(
@@ -11,21 +10,26 @@ export default async (req: Request, res: Response) => {
   const isAuthentic = await paystackPaymentProcessorService.verifyWebhook(req.body, req.headers['x-paystack-signature'] as any);
   if (isAuthentic) {
 
-    const paymentRepository: typeof PaymentRepository =
-      req.scope.resolve("paymentRepository");
+    const paymentSessionRepository: typeof PaymentSessionRepository =
+      req.scope.resolve("paymentSessionRepository");
     const manager: any = req.scope.resolve("manager");
-    const paymentRepo = manager.withRepository(paymentRepository);
+    const paymentSessionRepo = manager.withRepository(paymentSessionRepository);
 
+    console.error('paystack payload', JSON.stringify(req.body));
+    switch (req.body.event) {
+      case "charge.success":
+        const paymentSession: PaymentSession = await paymentSessionRepo.findOne({
+          where: {
+            provider_id: PaystackPaymentProcessor.identifier,
+            data: {
+              paystackTxRef: req.body.data.reference
+            }
+          }
+        });
 
-    const payment: Payment = await paymentRepo.findOne({
-      where: {
-        data: {
-          paystackTxId: req.body.data.id
-        }
-      }
-    });
-
-    await autorizeCart(req, payment.cart_id);
+        await autorizeCart(req, paymentSession.cart_id!);
+        break;
+    }
   }
   res.send(200);
 
